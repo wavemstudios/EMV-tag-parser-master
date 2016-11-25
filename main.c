@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "tlv.h"
 #include "hashtable.h"
 #include "emvTagList.h"
@@ -74,15 +75,14 @@ int main(){
 	int tlvLength;
 	int tlvCommand;
 	int tlvValuePointer;
-	int tlvOffset;
+	int tlvValueOffset;
 	int idx = 0;
 	int commandOffset = 0;
 
 //	unsigned char tlvtest[] = {0x5F,0x81,0x81,0x01,0x02,0x00,0x00}; //Antenna Off
 //	unsigned char tlvtest[] = {0x5F,0x81,0x81,0x01,0x06,0x04,0x00,0x01,0x02,0x03,0x04}; //Load Polling Table
 //	unsigned char tlvtest[] = {0x5F,0x81,0x81,0x01,0x06,0x02,0x00,0x01,0x02,0x03,0x04}; //Poll For Card
-	unsigned char tlvtest[] = {0x5F,0x84,0x81,0x15,0x06,0xFE,0x01,0x02,0x03,0x04,0x05}; //Straight Through Mode
-
+    unsigned int tlvtest[] = {0x5F,0x84,0x81,0x15,0x06,0xFE,0x00,0x84,0x00,0x00,0x08};
 
 	printf("INPUT DATA: ");
 		for (idx = 0; idx < sizeof(tlvtest); idx++){
@@ -90,57 +90,28 @@ int main(){
 		}
 	printf("\n");
 
-	parseTlv(&tlvtest, sizeof(tlvtest), &tlvTag, &tlvLength, &tlvValuePointer);
+	parseTlvCommand(&tlvtest, sizeof(tlvtest), &tlvTag, &tlvLength,  &tlvCommand, &tlvValueOffset);
 	printf("TAG: %02X\n", tlvTag);
-	printf("LEN: %02X\n", tlvLength);
-
-	tlvOffset = (int)tlvValuePointer - (int)&tlvtest;
-
-	printf("OFFSET: %02X\n", tlvOffset);
-
-	printf("VALUE: ");
-	for (idx = 0; idx < tlvLength; idx++){
-			printf("%02X ", tlvtest[idx+tlvOffset]);
-	}
-	printf("\n");
-
-	if (tlvTag == 0x5F818101 && tlvLength >= 0x02){
-		tlvCommand=(tlvtest[tlvOffset]<<8)|tlvtest[tlvOffset+1];
-		commandOffset = 0x02;
-		if (tlvCommand == 0x0200){
-			printf("COMMAND POLL: %02X\n", tlvCommand);
-		}
-		if (tlvCommand == 0x0400){
-			printf("COMMAND LOAD TABLE: %02X\n", tlvCommand);
-		}
-		if (tlvCommand == 0x0000){
-			printf("COMMAND ANTENNA OFF: %02X\n", tlvCommand);
-		}
-	}
-
-	if (tlvTag == 0x5F848115 && tlvLength >= 0x01){
-		tlvCommand=tlvtest[tlvOffset];
-		commandOffset = 0x01;
-		if (tlvCommand == 0xFE){
-			printf("COMMAND THROUGH MODE: %02X\n", tlvCommand);
-		}
-	}
-
-	printf("COMMAND OFFSET: %02X\n", commandOffset);
+	printf("COMMAND: %02X\n", tlvCommand);
+	printf("ACTUAL LEN: %02X\n", tlvLength);
+	printf("OFFSET: %02X\n", tlvValueOffset);
 
 	printf("ACTUAL VALUE: ");
-	for (idx = 0; idx < tlvLength-commandOffset; idx++){
-			printf("%02X ", tlvtest[idx+tlvOffset+commandOffset]);
+	for (idx = 0; idx < tlvLength; idx++){
+			printf("%02X ", tlvtest[idx+tlvValueOffset]);
 	}
 	printf("\n");
 
-	printf("COMMAND: %02X\n", tlvCommand);
+	printf("START ADDRESS: %02X\n", tlvtest);
+	printf("TLV ADDRESS: %02X\n", &tlvtest[tlvValueOffset]);
+	 ;
 
 	return 0;
 }
 
-int parseTlv(unsigned char *buffer, int length, int *tlvTag, int *tlvLength, int *tlvValue) {
+int parseTlvCommand(unsigned char *buffer, int length, int *tlvTag, int *tlvLength, int *tlvCommand, int *tlvValueOffset) {
 
+		int startBuffer = (intptr_t)buffer;
         // Get tag
         int tag=*(buffer++);
         int tagLength,tmp;
@@ -199,9 +170,41 @@ int parseTlv(unsigned char *buffer, int length, int *tlvTag, int *tlvLength, int
                 break;
         }
 
-        (*tlvLength) = tagLength;
 
-        (*tlvValue) = buffer;
+
+    	if ((*tlvTag) == 0x5F818101 && tagLength >= 0x02){
+//    		tlvCommand=(tlvtest[tlvValueOffset]<<8)|tlvtest[tlvValueOffset+1];
+//    		commandOffset = 0x02;
+    		(*tlvCommand)=*(buffer++);
+    		(*tlvCommand)=((*tlvCommand)<<8)|*(buffer++);
+    		tagLength--;
+    		tagLength--;
+
+    		if ((*tlvCommand) == 0x0200){
+    			printf("COMMAND POLL: %02X\n", (*tlvCommand));
+    		}
+    		if ((*tlvCommand) == 0x0400){
+    			printf("COMMAND LOAD TABLE: %02X\n", (*tlvCommand));
+    		}
+    		if ((*tlvCommand) == 0x0000){
+    			printf("COMMAND ANTENNA OFF: %02X\n", (*tlvCommand));
+    		}
+    	}
+
+    	if ((*tlvTag) == 0x5F848115 && tagLength >= 0x01){
+//    		tlvCommand=tlvtest[tlvValueOffset];
+//    		commandOffset = 0x01;
+    		(*tlvCommand)=*(buffer++);
+    		tagLength--;
+    		if ((*tlvCommand) == 0xFE){
+    			printf("COMMAND THROUGH MODE: %02X\n", (*tlvCommand));
+    		}
+    	}
+
+    	(*tlvLength) = tagLength;
+
+        (*tlvValueOffset) = (intptr_t)buffer - startBuffer;
+
 
         // Check value
         if(tagLength>length) return -1;
